@@ -1,22 +1,31 @@
 module Main exposing (main)
 
-import Html
+import Html exposing (Html)
 import Http
 import Json.Decode as Json
-import Task exposing (Task)
+import ParseInt
+import Dict exposing (Dict)
 
 
 type alias Datum =
-    { categoryId : Json.Value }
+    { categoryId : Int
+    , group : String
+    , item : String
+    }
 
 
 type alias Data =
-    List Datum
+    List (Maybe Datum)
+
+
+type alias CleanedObj =
+    Dict Int (Dict String (List String))
 
 
 type alias Model =
     { error : Maybe Http.Error
     , response : Maybe Data
+    , cleaned : CleanedObj
     }
 
 
@@ -35,7 +44,7 @@ main =
 
 init : ( Model, Cmd Msg )
 init =
-    ( Model Nothing Nothing, sendRequest )
+    ( Model Nothing Nothing Dict.empty, sendRequest )
 
 
 sendRequest : Cmd Msg
@@ -50,9 +59,23 @@ sendRequest =
 decodeResponse : Json.Decoder Data
 decodeResponse =
     let
+        itemDecoder : Json.Decoder (Maybe Datum)
         itemDecoder =
-            Json.map Datum
-                (Json.at [ "gsx$categoryid", "$t" ] Json.value)
+            Json.maybe
+                (Json.at [ "gsx$categoryid", "$t" ] Json.string
+                    |> Json.andThen
+                        (\idString ->
+                            case ParseInt.parseInt idString of
+                                Ok id ->
+                                    Json.map3 Datum
+                                        (Json.succeed id)
+                                        (Json.at [ "gsx$group", "$t" ] Json.string)
+                                        (Json.at [ "gsx$item", "$t" ] Json.string)
+
+                                Err _ ->
+                                    Json.fail "cannot parse id string"
+                        )
+                )
     in
         Json.at [ "feed", "entry" ] (Json.list itemDecoder)
 
@@ -69,8 +92,22 @@ update msg model =
                     { model | error = Just error } ! []
 
 
-view : Model -> Html.Html Msg
+view : Model -> Html Msg
 view model =
+    Html.div []
+        [ detailView model, rawView model ]
+
+
+detailView model =
+    let
+        datumView : Maybe Datum -> Html Msg
+        datumView datum =
+            Html.li [] [ Html.text (toString datum) ]
+    in
+        Html.div [] (List.map datumView (Maybe.withDefault [] model.response))
+
+
+rawView model =
     Html.text <| toString model
 
 
