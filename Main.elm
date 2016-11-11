@@ -6,8 +6,12 @@ import Json.Decode as Json
 import Task exposing (Task)
 
 
+type alias Datum =
+    { categoryId : Json.Value }
+
+
 type alias Data =
-    Json.Value
+    List Datum
 
 
 type alias Model =
@@ -43,9 +47,14 @@ sendRequest =
         Http.send Response (Http.get url decodeResponse)
 
 
-decodeResponse : Json.Decoder Json.Value
+decodeResponse : Json.Decoder Data
 decodeResponse =
-    Json.at [ "feed", "entry" ] Json.value
+    let
+        itemDecoder =
+            Json.map Datum
+                (Json.at [ "gsx$categoryid", "$t" ] Json.value)
+    in
+        Json.at [ "feed", "entry" ] (Json.list itemDecoder)
 
 
 update : Msg -> Model -> ( Model, Cmd Msg )
